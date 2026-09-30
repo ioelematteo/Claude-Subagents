@@ -115,7 +115,7 @@ Reproduce: `uv run python evals/run.py --ladder --repeat 3`.
 | Control | How |
 |---|---|
 | **Cost budget** | Per-session ceiling (`SWARM_BUDGET_USD`, `set_budget`). Pre-flight reservation of worst-case cost, settled with real usage. Refused attempts end as `over_budget`. |
-| **Retries** | Bounded by the ladder (`max_attempts` to cap). Timeouts, rate limits and 5xx move to the next tier; auth, billing and bad-request errors (400/401/402/403) stop the job at once, since no other model can fix them; a worker saying `MISSING:` stops immediately, because a bigger model cannot invent missing context. |
+| **Retries** | Bounded by the ladder (`max_attempts` to cap). API errors and timeouts move to the next tier; a worker saying `MISSING:` stops immediately, because a bigger model cannot invent missing context. |
 | **Review gates** | `verify` = machine gate. `gate="approve"` = human gate: files wait on disk, `approve` keeps them, `reject` rolls back and can resubmit with feedback. Dependents wait for approval. |
 | **State and memory** | Workers share state through files and written contracts, never through each other's context. Jobs and every event live in SQLite; `retry` works across restarts; stale jobs are marked `interrupted` on startup. |
 | **Blast radius** | Reads/writes confined to the project root, no path traversal, secrets (`.env`, keys) never read or written, pre-existing files untouched without `overwrite`, verify commands are a single allowlisted program with no shell. |
@@ -163,7 +163,7 @@ mid-flight, run across machines, or wait days on a human; see limits below.
 
 ## Quality
 
-- `tests/` — 125 offline tests (fake LLM, no network): DAG, escalation, rollback, budget, gates, retries,
+- `tests/` — 117 offline tests (fake LLM, no network): DAG, escalation, rollback, budget, gates, retries,
   sandboxing, store aggregates, verify allowlist. CI runs ruff + pytest on every push.
 - `evals/` — 8 tasks with hidden tests, validated against reference solutions; `uv run python evals/run.py
   --ladder --repeat 3` regenerates [`evals/RESULTS.md`](evals/RESULTS.md).

@@ -22,8 +22,6 @@ ProfileName = Literal["implement", "tests", "review", "bulk", "digest", "write"]
 LLM = Callable[..., Awaitable[tuple[str, Any]]]
 
 OK_WRITES = ("created", "overwritten")
-# Provider errors that escalation cannot fix: stop the job instead of burning the ladder.
-FATAL_HTTP = {400: "bad request", 401: "invalid API key", 402: "account out of credit", 403: "forbidden"}
 
 
 class JobSpec(BaseModel):
@@ -150,8 +148,6 @@ class Engine:
         for spec in specs:
             needs_root = spec.root or spec.context_files or spec.apply
             root = workspace.get_root(spec.root) if needs_root else None
-            if spec.context_files:  # fail at submit on paths outside root; files may still be produced by deps
-                workspace.expand(root, spec.context_files)
             jobs.append(Job(id=uuid.uuid4().hex[:8], spec=spec, session=self.session, root=root))
         by_label = {j.spec.label: j for j in jobs if j.spec.label}
         for job in jobs:
@@ -274,16 +270,10 @@ class Engine:
                 if usage:
                     tokens_in, tokens_out = usage.prompt_tokens, usage.completion_tokens
                 actual = tier.cost(tokens_in, tokens_out)
-            except Exception as e:
+            except Exception as e:  # API error or timeout: try the next tier with the same prompt
                 outcome = f"error: {type(e).__name__}: {e}"[:300]
                 self._attempt_event(job, tier, 0, 0, 0.0, t0, outcome)
-                status = getattr(e, "status_code", None)
-                if status in FATAL_HTTP:  # no other tier can fix auth, billing or a malformed request
-                    job.error = f"provider refused the request (HTTP {status}, {FATAL_HTTP[status]}): {e}"[:500]
-                    self._rollback(job)
-                    self._set(job, "failed")
-                    return
-                continue  # timeout, rate limit, 5xx: try the next tier with the same prompt
+                continue
             finally:
                 self.budget.settle(reserved, actual)
             job.tokens_in += tokens_in
